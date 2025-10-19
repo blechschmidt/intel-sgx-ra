@@ -1,13 +1,24 @@
 """intel_sgx_ra.cli.tools module."""
 
 import argparse
+import hashlib
 import logging
 import sys
 from pathlib import Path
 
+from cryptography.hazmat.primitives import serialization
+
 from intel_sgx_ra.error import CommandNotFound
 from intel_sgx_ra.quote import Quote
 from intel_sgx_ra.ratls import get_quote_from_cert, get_server_certificate, url_parse
+
+
+def rsa_pubkey_hash_from_pem(path: str) -> bytes:
+    pem = open(path, "rb").read()  # RSA-3072 public key in PEM
+    pub = serialization.load_pem_public_key(pem)
+    n = pub.public_numbers().n  # RSA modulus (int)
+    modulus = n.to_bytes(384, "little", signed=False)  # 384 bytes, big-endian
+    return hashlib.sha256(modulus).digest()
 
 
 def parse_args() -> argparse.Namespace:

@@ -7,6 +7,8 @@ import traceback
 from pathlib import Path
 from pprint import pformat
 
+from . import utils
+
 from intel_sgx_ra import globs
 from intel_sgx_ra.attest import verify_quote
 from intel_sgx_ra.error import (
@@ -37,6 +39,12 @@ def parse_args() -> argparse.Namespace:
         metavar="HEXDIGEST",
         type=str,
         help="Expected MRSIGNER value in SGX quote",
+    )
+    parser.add_argument(
+        "--mrsigner-key",
+        metavar="FILE",
+        type=str,
+        help="Path to PEM-encoded pubkey used to sign the enclave",
     )
 
     ra_type_group = parser.add_mutually_exclusive_group(required=True)
@@ -124,8 +132,16 @@ def run() -> None:
             LOGGER.info("%s MRENCLAVE matches expected value", globs.FAIL)
             sys.exit(5)
 
-    if args.mrsigner:
-        if quote.report_body.mr_signer == bytes.fromhex(args.mrsigner):
+    if args.mrsigner or args.mrsigner_key:
+        if args.mrsigner_key and args.mrsigner:
+            raise ValueError("Cannot specify both --mrsigner and --mrsigner-key")
+
+        if args.mrsigner:
+            expected_mrsigner = bytes.fromhex(args.mrsigner)
+        else:
+            expected_mrsigner = utils.rsa_pubkey_hash_from_pem(args.mrsigner_key)
+
+        if quote.report_body.mr_signer == expected_mrsigner:
             LOGGER.info("%s MRSIGNER matches expected value", globs.OK)
         else:
             LOGGER.info("%s MRSIGNER matches expected value", globs.FAIL)
