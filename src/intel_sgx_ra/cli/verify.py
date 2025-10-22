@@ -22,6 +22,7 @@ from intel_sgx_ra.log import LOGGER
 from intel_sgx_ra.maa.attest import verify_quote as azure_verify_quote
 from intel_sgx_ra.quote import Quote
 from intel_sgx_ra.ratls import ratls_verify, ratls_verify_from_url
+from intel_sgx_ra.css import gendata_from_file
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,6 +34,12 @@ def parse_args() -> argparse.Namespace:
         metavar="HEXDIGEST",
         type=str,
         help="Expected MRENCLAVE value in SGX quote",
+    )
+    parser.add_argument(
+        "--mrenclave-gendata",
+        metavar="FILE",
+        type=str,
+        help="Path to gendata file to extract MRENCLAVE from",
     )
     parser.add_argument(
         "--mrsigner",
@@ -125,8 +132,17 @@ def run() -> None:
         traceback.print_exc()
         sys.exit(4)
 
+    if args.mrenclave and args.mrenclave_gendata:
+        raise ValueError("Cannot specify both --mrenclave and --mrenclave-gendata")
+
+    if args.mrenclave_gendata:
+        gendata = gendata_from_file(args.mrenclave_gendata)
+        expected_mrenclave = bytes(gendata.body.enclave_hash)
     if args.mrenclave:
-        if quote.report_body.mr_enclave == bytes.fromhex(args.mrenclave):
+        expected_mrenclave = bytes.fromhex(args.mrenclave)
+
+    if args.mrenclave or args.mrenclave_gendata:
+        if quote.report_body.mr_enclave == expected_mrenclave:
             LOGGER.info("%s MRENCLAVE matches expected value", globs.OK)
         else:
             LOGGER.info("%s MRENCLAVE matches expected value", globs.FAIL)
