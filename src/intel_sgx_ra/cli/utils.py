@@ -8,6 +8,7 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
 
+from intel_sgx_ra.css import gendata_from_file
 from intel_sgx_ra.error import CommandNotFound
 from intel_sgx_ra.quote import Quote
 from intel_sgx_ra.ratls import get_quote_from_cert, get_server_certificate, url_parse
@@ -48,15 +49,39 @@ def parse_args() -> argparse.Namespace:
         help="HTTPS URL to fetch server's certificate",
     )
 
+    extract_data_parser = subparsers.add_parser(
+        "quote-data", help="Extract data from Intel SGX quote"
+    )
+    extract_data_parser.add_argument(
+        "QUOTE", type=Path, help="Path to the Intel SGX quote binary file"
+    )
+    extract_data_parser.add_argument(
+        "--hex", action="store_true", help="Hexadecimal output format"
+    )
+
+    key_hash_parser = subparsers.add_parser(
+        "key-hash", help="Compute RSA public key hash from PEM file"
+    )
+    key_hash_parser.add_argument(
+        "PEM", type=str, help="Path to the RSA-3072 public key in PEM format"
+    )
+    key_hash_parser.add_argument(
+        "--hex", action="store_true", help="Hexadecimal output format"
+    )
+
+    gendata_parser = subparsers.add_parser(
+        "gendata", help="Extract MRENCLAVE from CSS GENDATA file"
+    )
+    gendata_parser.add_argument(
+        "GENDATA", type=Path, help="Path to the CSS GENDATA binary file"
+    )
+    gendata_parser.add_argument(
+        "--hex", action="store_true", help="Hexadecimal output format"
+    )
+
     return parser.parse_args()
 
-
-# pylint: disable=too-many-branches
-def run() -> None:
-    """Entrypoint of the CLI."""
-    logging.basicConfig(format="%(message)s", level=logging.INFO)
-    args = parse_args()
-
+def extract_quote(args):
     quote: Quote
 
     if args.path:
@@ -73,3 +98,46 @@ def run() -> None:
     args.OUTPUT.write_bytes(bytes(quote))
 
     sys.exit(0)
+
+def extract_quote_data(args):
+    quote_path: Path = args.QUOTE.resolve()
+    quote = Quote.from_bytes(quote_path.read_bytes())
+    if args.hex:
+        print(quote.report_body.report_data.hex())
+    else:
+        sys.stdout.buffer.write(quote.report_body.report_data)
+    sys.exit(0)
+
+def key_hash(args):
+    key_hash = rsa_pubkey_hash_from_pem(args.PEM)
+    if args.hex:
+        print(key_hash.hex())
+    else:
+        sys.stdout.buffer.write(key_hash)
+    sys.exit(0)
+
+def extract_mrenclave_from_gendata(args):
+    gendata = gendata_from_file(args.GENDATA)
+    mr_enclave = bytes(gendata.body.enclave_hash)
+    if args.hex:
+        print(mr_enclave.hex())
+    else:
+        sys.stdout.buffer.write(mr_enclave)
+    sys.exit(0)
+
+# pylint: disable=too-many-branches
+def run() -> None:
+    """Entrypoint of the CLI."""
+    logging.basicConfig(format="%(message)s", level=logging.INFO, stream=sys.stderr)
+    args = parse_args()
+
+    if args.command == "extract":
+        extract_quote(args)
+    elif args.command == "quote-data":
+        extract_quote_data(args)
+    elif args.command == "key-hash":
+        key_hash(args)
+    elif args.command == "gendata":
+        extract_mrenclave_from_gendata(args)
+    else:
+        raise CommandNotFound("Bad subcommand!")
